@@ -5,6 +5,8 @@ date: "2023-11-21"
 output: html_document
 ---
 
+Brief description: This is a script that calculates Nitrification Inhibition EC50 values for pure compounds or mixes of compounds, using data provided by our developed High - Throughput, Fast - Track Screening Bioassay. The activity curves follow a linear regression, enabling us to use parameters of the curves across all available time - points to calculate the EC50. 
+
 Step 1: Let's see all the necessary packages needed for the analysis and load them. If they are not installed, we will install them first. 
 
 ```{r echo=TRUE, message=FALSE}
