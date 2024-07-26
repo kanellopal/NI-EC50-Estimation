@@ -1,0 +1,268 @@
+---
+title: "Nitrification Inhibition EC50 Calculation Script Demonstration"
+author: "Alex Kanellopoulos"
+date: "2023-11-21"
+output: html_document
+---
+
+Brief description: This is a script that calculates Nitrification Inhibition EC50 values for pure compounds or mixes of compounds, using data provided by our developed High - Throughput, Fast - Track Screening Bioassay. The activity curves follow a linear regression, enabling us to use parameters of the curves across all available time - points to calculate the EC50. 
+
+Step 1: Let's see all the necessary packages needed for the analysis and load them. If they are not installed, we will install them first. 
+
+```{r echo=TRUE, message=FALSE}
+# Here we store the necessary packages in the necessary_packages variable
+necessary_packages <- c("dplyr","ggplot2","investr") 
+
+# Here we check if the necessary packages are installed. If not, R installs them 
+if (!requireNamespace(necessary_packages, quietly = TRUE)) {
+  install.packages(necessary_packages)
+}
+
+# Here, for every package included in the necessary_packages variable, R will load it. The character.only = TRUE ensures that library() will try to interpret the package names as characters (as it needs for it to work) 
+for (package in necessary_packages) {
+  library(package, character.only = TRUE)
+}
+```
+
+Step 2: We will load the data. The data need to be in a mat.txt file as presented, with three columns (Dose, Time, Nitrite):
+
+```{r echo=FALSE}
+data <- read.table("mat.txt", header = TRUE, sep = "", dec = ".") 
+print(data)
+```
+
+For all the Doses of one compound (plus the respective control, which is Dose 0) and the time - points of your assay. 
+
+Let's load the data!
+
+```{r echo=TRUE}
+# Here, we create a R data frame named data with the data of the mat.txt file. We keep the headers of the columns with header = TRUE. The decimals are set as . instead of , with dec = "." 
+data <- read.table("mat.txt", header = TRUE, sep = "", dec = ".") 
+
+# We want to create a variable that stores the different doses as numerics (numbers). 
+# So we need to make a factor out of the Dose column of the data frame to apply the levels() function to give us the different doses (with each dose appearing once). 
+# Then, we make those different doses numerics and we store them in the doses variable 
+doses <- as.numeric(levels(as.factor(data$Dose)))
+
+# Have a look at the data and the doses 
+glimpse(data)
+print(doses)
+```
+
+
+Step 3: We need to visualise the data in order to evaluate our linear regressions for the curves of the different doses of the compound 
+
+```{r echo=TRUE, message=FALSE}
+# We create a variable named legend_order to set the order of the legend for our plot. It will be the same as the order of the different doses in the doses variable. Usually levels() will sort them automatically
+legend_order <- doses
+
+# We will create a plot for the effects of the different doses on Nitrite
+# We will use Time in the x-axis and Nitrite in the y-axis and we will colour depending on the different Dose.
+# We will use a light theme
+# We will put a tilte and rename the axis and the legend
+# We will customise the fonts of the labels and the titles and put the legend in the bottom
+# We will se the y axis from 0 to 1000 with steps of 200
+# We will use geom_sooth to create our linear regression curves (method = lm) with a dashed line and width of 0.6 without showing the standard error
+linear_regression_plot <- ggplot(data, aes(x = Time, y = Nitrite, colour = factor(Dose))) + 
+  theme_light() + 
+  labs(title = "Linear Regression Plot", x = "Time (h)", y = "[Nitrite] (μM)", colour = "Dose") +
+  theme(axis.title = element_text(size = 28), axis.text = element_text(size = 20), axis.text.x = element_text(angle = 45, hjust = 1, size = 16), legend.text = element_text(size = 20), legend.title = element_text(size = 20), legend.position = "bottom",) + 
+  scale_y_continuous(breaks = seq(0,1000, by = 200)) + 
+  ylim(0,1000) + 
+  geom_smooth(aes(x = Time, y = Nitrite, colour = factor(Dose)), method = lm, linetype = "dashed", linewidth = 0.6, se = F) 
+print(linear_regression_plot)
+
+# We want to obtain the adjusted R-squared values for each curve, with 4 decimals. So, we create a adj_r_squared_values variable where we store a text, which will say what the adjusted R-squared values are for each dose
+# It will search the summaries of the different linear regressions (of Nitrite v Time) for each dose separately. Hence where we need to designate the data for the lm() function we put filter(). Each time, it will consider only the data corresponding to the different dose from the doses variable, hence Dose == doses[i].  
+adj_r_squared_values <- paste("The adjusted R-squared values are", 
+                              "Control:", round(summary(lm(Nitrite~Time, filter(data, Dose == doses[1])))$adj.r.squared,4), 
+                              "Dose 1:", round(summary(lm(Nitrite~Time, filter(data, Dose == doses[2])))$adj.r.squared,4), 
+                              "Dose 2:", round(summary(lm(Nitrite~Time, filter(data, Dose == doses[3])))$adj.r.squared,4), 
+                              "Dose 3:", round(summary(lm(Nitrite~Time, filter(data, Dose == doses[4])))$adj.r.squared,4), 
+                              "Dose 4:", round(summary(lm(Nitrite~Time, filter(data, Dose == doses[5])))$adj.r.squared,4))
+print(adj_r_squared_values)
+```
+NOTE: Don't be scared if one of the R-squared values is low. It can happen with doses that inflict almost full inhibition (e.g. here Dose 4)
+
+Step 4: Let's process the data, getting the slopes of the curves in order to calculate the Ammonia Oxidation Inhibiiton % (AOI%) for each dose
+
+```{r echo=TRUE, message=FALSE}
+# We will get the slope values for each dose by looking at the linear regressions and extracting the correct coefficient
+# As an example, the linear regression report looks like this: (Intercept is the β of y = αx + β, Time is the α coefficient)
+lm(Nitrite~Time, filter(data, Dose == doses[1]))
+
+# So let's get the values
+a_control <- coef(lm(Nitrite~Time, filter(data, Dose == doses[1])))["Time"]
+a_NI_1 <- coef(lm(Nitrite~Time, filter(data, Dose == doses[2])))["Time"]
+a_NI_2 <- coef(lm(Nitrite~Time, filter(data, Dose == doses[3])))["Time"]
+a_NI_3 <- coef(lm(Nitrite~Time, filter(data, Dose == doses[4])))["Time"]
+a_NI_4 <- coef(lm(Nitrite~Time, filter(data, Dose == doses[5])))["Time"]
+
+# Now we use the following equation to calculate the AOI %
+AOI_1 <- (a_control - a_NI_1) * 100 / a_control
+AOI_2 <- (a_control - a_NI_2) * 100 / a_control
+AOI_3 <- (a_control - a_NI_3) * 100 / a_control
+AOI_4 <- (a_control - a_NI_4) * 100 / a_control
+
+#Finally we store the AOI% values in the AOIs variable, along side the AOI% of the control which is 0
+AOIs <- c(0, AOI_1,AOI_2,AOI_3,AOI_4)
+
+# Let's get a look at the AOI% values
+print(AOIs)
+```
+
+Step 5: Let's check the data to see if any interference is needed 
+
+```{r echo=TRUE, message=FALSE}
+# We can plot the data to check their fit
+  plot_AOI_vs_dose <- plot(doses,AOIs, type = "o", ylab = "Ammonia Oxidation Inhibition %", xlab = "Dose") 
+```
+
+Step 6: Let's calculate the EC50 value. For this we need to evaluate the fit of the AOI% v Dose linear model and interfere with the data if needed. For this, we can set an adjusted R-squared threshold of 0.9 and a p - value threshold of 0.05. Based on the previous plot we can have an idea about any data points that need to be eliminated
+
+```{r echo=TRUE}
+# If the R-squared value is over 0.9 AND p - value is lower than 0.05, then we execute the first part, with all values included
+# So the AOIs variable remains the same
+# We check the linear regression report
+# We plot the data (AOI% v Dose) in a simple plot, with empty circles as points, renaimed axis titles and an abline representing the linear regression. In the plot, using text() we can insert information about the EC50 calculated, the adjusted R-squared of the regression and the p-value.
+# Finally we print the EC50 value
+if (summary(lm(AOIs~as.numeric(doses)))$adj.r.squared > 0.9 && summary(lm(AOIs~as.numeric(doses)))$coefficients["as.numeric(doses)","Pr(>|t|)"] < 0.05) {
+  AOIs <- AOIs
+  linear_regression <- lm(AOIs~as.numeric(doses))
+  linear_regression
+  plot_AOI_vs_dose <- plot(doses,AOIs, type = "o", ylab = "Ammonia Oxidation Inhibition %", xlab = "Dose") 
+  abline(lm(AOIs~as.numeric(doses)), col = "navyblue")
+  text(0,60,paste("EC50 (μM): ",round((50 - coef(linear_regression)["(Intercept)"])/coef(linear_regression)["as.numeric(doses)"], 2)),pos=4)
+  text(0,50,paste("Adjsuted R - squared:",round(summary(lm(AOIs~as.numeric(doses)))$adj.r.squared,4)),pos=4)
+  text(0,40,paste("p-value:", round(summary(linear_regression)$coefficients[2,4],4)),pos=4)
+EC50 <- round((50 - coef(linear_regression)["(Intercept)"])/coef(linear_regression)["as.numeric(doses)"], 2)
+# The EC50 value will be calculated from the appropriate part of the if statement and will be printed
+EC50
+} else {
+  # Else we remove one AOI%, usually the first or the last can be out of the linear regression. Here the last point was problematic so we remove it 
+  # The doses and AOIs variables change so they will not include the last values
+  # Everything else is the same as above
+  doses <- doses[1:4]
+  AOIs <- AOIs[1:4]
+  linear_regression <- lm(AOIs~as.numeric(doses))
+  linear_regression
+  plot_AOI_vs_dose <- plot(doses,AOIs, type = "o", ylab = "Ammonia Oxidation Inhibition %", xlab = "Dose") 
+  abline(lm(AOIs~as.numeric(doses)), col = "navyblue")
+    text(0,60,paste("EC50 (μM): ",round((50 - coef(linear_regression)["(Intercept)"])/coef(linear_regression)["as.numeric(doses)"], 2)),pos=4)
+    text(0,50,paste("Adjsuted R - squared:",round(summary(lm(AOIs~as.numeric(doses)))$adj.r.squared,4)),pos=4)
+    text(0,40,paste("p-value:", round(summary(linear_regression)$coefficients[2,4],4)),pos=4)
+  EC50 <- round((50 - coef(linear_regression)["(Intercept)"])/coef(linear_regression)["as.numeric(doses)"], 2)
+# The EC50 value will be calculated from the appropriate part of the if statement and will be printed
+  EC50
+}
+
+```
+
+Step 7: We also need to estimate the standard error for the calculated EC50 value
+```{r echo=TRUE, message=FALSE}
+# Perform a linear regression calibration to predict the EC50 with a st.error
+calibration <- calibrate(linear_regression, level = 0.95, y0 = 50, mean.response = F, interval = "Wald")
+se <- calibration$se
+se
+```
+
+Step 8: We can export the final graphs and reports
+```{r echo=TRUE, message=FALSE}
+# We will create two .pdf files and a .txt file as part of the report. 
+# We will use cairo_pdf() for the .pdf files. The way it works is we designate the name of the files, as well as the dimensions in the () and then whatever we want to put inside comes next, before we close the graphics engine with dev.off()
+# Based on the previous plot we have an idea for where to put the texts for the EC50, Adjuster R - squared and p - value
+cairo_pdf("linear_model_output.pdf", height = 6, width = 6, onefile = TRUE)
+  plot_AOI_vs_dose <- plot(doses,AOIs, type = "o", ylab = "Ammonia Oxidation Inhibition %", xlab = "Dose") 
+  abline(lm(AOIs~as.numeric(doses)), col = "navyblue")
+    text(0,60,paste("EC50 (μM): ",round((50 - coef(linear_regression)["(Intercept)"])/coef(linear_regression)["as.numeric(doses)"], 2), "\u00B1", round(se,2), "μΜ"),pos=4)
+    text(0,50,paste("Adjsuted R - squared:",round(summary(lm(AOIs~as.numeric(doses)))$adj.r.squared,4)),pos=4)
+    text(0,40,paste("p-value:", round(summary(linear_regression)$coefficients[2,4],4)),pos=4)
+dev.off()
+
+cairo_pdf("linear_regressions_plot.pdf", height = 6, width = 6, onefile = TRUE)
+  print(linear_regression_plot)
+dev.off()
+
+# We will use the sink() function to create the .txt file. 
+# We say what we want to be rinted and save the file using sink(file - NULL)
+sink("Adjusted R-squared values for Doses effect on Nitrite.txt")
+  print(adj_r_squared_values)
+sink(file = NULL)
+
+
+# You can look for the files in your directory!
+```
+Step 8: Not all data follow a linear regression as the best fit. So we can also try different models. In this step we will try a 3rd degree polynomial curve fit. 
+
+```{r echo=TRUE, message=FALSE}
+# In case some values were removed after using the previous model, here we initialise our objects again
+AOIs <- c(0, AOI_1,AOI_2,AOI_3,AOI_4)
+doses <- levels(as.factor(data$Dose))
+
+# We first obtain the summary of the fit of the polynomial curve and store the model
+summary(lm(AOIs ~ (as.numeric(doses) + I(as.numeric(doses)^2) + I(as.numeric(doses)^3))))
+fit <- lm(AOIs ~ (as.numeric(doses) + I(as.numeric(doses)^2) + I(as.numeric(doses)^3)))
+
+# Here we create a range of 100 dummy doses, spanning from the lowest to the highest real doses and, for those, we predict the AOI% based on the polynomial model 
+dose_seq <- seq(min(doses), max(doses), length.out = 100)
+predicted_AOIs <- predict(fit, newdata = data.frame(doses = dose_seq))
+
+# We plot the real data and geenrate a curve line based on the dummy and predicted variables
+plot_AOI_vs_dose <- plot(doses,AOIs, type = "p", ylab = "Ammonia Oxidation Inhibition %", xlab = "Dose") 
+lines(dose_seq, predicted_AOIs, col = "magenta")
+
+# We solve the olynomial equation and save the only value that is not a mixed number. In case > 1 real solutions are obtained we keep the first one
+solutions <- polyroot(c(-50 + coef(fit)["(Intercept)"], coef(fit)["as.numeric(doses)"], coef(fit)["I(as.numeric(doses)^2)"], coef(fit)["I(as.numeric(doses)^3)"]))
+EC50 <- Re(round(solutions[grep(pattern = "0i", x = as.character(solutions))],2))
+EC50 <- EC50[1]
+```
+
+Step 9: Similar to the linear model we need to estimate the standard error of the EC50 value
+```{r echo=TRUE, message=FALSE}
+polynomial_model <- (lm(AOIs ~ (as.numeric(doses) + I(as.numeric(doses)^2) + I(as.numeric(doses)^3))))
+
+# We store the coefficient values of the model equation and create also a covariance matrix 
+coef_poly <- coef(polynomial_model)
+cov_matrix <- vcov(polynomial_model)
+
+# We obtain the first derivative of the polynomial function
+poly_func <- function(x) {
+  coef_poly[1] + coef_poly[2] * x + coef_poly[3] * x^2 + coef_poly[4] * x^3
+}
+
+poly_derivative <- function(x) {
+  coef_poly[2] + 2 * coef_poly[3] * x + 3 * coef_poly[4] * x^2
+}
+
+# We solve for y = 50. 
+y_target <- 50
+root <- uniroot(function(x) poly_func(x) - y_target, interval = c(as.numeric(min(doses)), as.numeric(max(doses))))$root
+
+
+
+# We estimate the sensitivity (gradient) of the model at the root for y = 50 and we calculate a standard error 
+deriv_at_root <- poly_derivative(root)
+gradient <- c(1, root, root^2, root^3)
+var_y <- t(gradient) %*% cov_matrix %*% gradient
+se_y <- sqrt(var_y) / abs(deriv_at_root)
+```
+
+Step 10: We are finally able to generate the graph 
+```{r echo=TRUE, message=FALSE}
+cairo_pdf("polynomial_model_output.pdf", height = 6, width = 6, onefile = TRUE)
+plot_AOI_vs_dose <- plot(doses,AOIs, type = "p", ylab = "Ammonia Oxidation Inhibition %", xlab = "Dose") 
+lines(dose_seq, predicted_AOIs, col = "magenta")
+solutions <- polyroot(c(-50 + coef(fit)["(Intercept)"], coef(fit)["as.numeric(doses)"], coef(fit)["I(as.numeric(doses)^2)"], coef(fit)["I(as.numeric(doses)^3)"]))
+EC50 <- Re(round(solutions[1],2))
+text(0,80,paste("EC50:", EC50, "\u00B1", round(se_y,2) ,"μM"),pos=4)
+text(0,70,paste("Adjsuted R - squared:",round(summary(fit)$adj.r.squared,4)),pos=4)
+text(0,60,paste("p-value:", round(pf(summary(fit)$fstatistic[1], summary(fit)$fstatistic[2], summary(fit)$fstatistic[3], lower.tail = FALSE),4)),pos=4)
+dev.off()
+```
+
+
+Thanks a lot for using this code! 
+
+Remember to always cite the author of the code you use!
+
+And buy a programmer a beer! They really need one!
