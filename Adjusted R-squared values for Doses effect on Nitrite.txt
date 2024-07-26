@@ -1,1 +1,0 @@
-[1] "The adjusted R-squared values are Control: 0.9963 Dose 1: 0.9958 Dose 2: 0.9885 Dose 3: 0.9562 Dose 4: 0.6622"
